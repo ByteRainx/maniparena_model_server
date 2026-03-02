@@ -1,7 +1,7 @@
 """
-通用模型服务器模板
+Universal model server template.
 
-适配x2robot_client的WebSocket通信协议。
+Implements the WebSocket protocol compatible with x2robot_client.
 """
 
 __version__ = "1.0.0"

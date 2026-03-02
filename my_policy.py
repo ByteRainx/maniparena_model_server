@@ -10,15 +10,15 @@ from typing import Any, Dict
 from policy_base import ModelPolicy
 
 
-# ============ 配置部分 - 参赛者需要修改 ============
+# ============ Configuration - edit for your model ============
 
 DEFAULT_CHECKPOINT_PATH = "/path/to/your/checkpoint"
-DEFAULT_CONTROL_MODE = "joints"  # 或 "end_pose"
+DEFAULT_CONTROL_MODE = "joints"  # or "end_pose"
 DEFAULT_ACTION_HORIZON = 50
 DEFAULT_DEVICE = "cuda:0"
 
 
-# ============ Policy实现 - 参赛者需要实现以下方法 ============
+# ============ Policy implementation - required methods ============
 
 class MyPolicy(ModelPolicy):
     """Implement `load_model()` + `run_inference()` for your model."""

@@ -1,36 +1,36 @@
-# 快速开始指南
+# Quick Start Guide
 
-> 这是最简化的快速开始指南。如需详细文档，请查看 [README.md](README.md)。
+> This is a minimal quick-start guide. For full details, see `README.md`.
 
-## 5分钟上手
+## Get Running in 5 Minutes
 
-### 1. 安装依赖
+### 1) Install dependencies
 
 ```bash
 cd universal_model_server
 pip install -r requirements.txt
 ```
 
-如果你需要在 `convert_input()`/`utils.py` 中把 `CAMERA_*` 解码成 numpy RGB（大多数模型需要），再安装：
+If your `convert_input()`/`utils.py` decodes `CAMERA_*` to numpy RGB (common), install:
 
 ```bash
 pip install opencv-python
 ```
 
-### 2. 修改配置
+### 2) Update config
 
-编辑 `my_policy.py`，修改顶部配置：
+Edit the top of `my_policy.py`:
 
 ```python
 DEFAULT_CHECKPOINT_PATH = "/path/to/your/checkpoint"
-DEFAULT_CONTROL_MODE = "joints"  # 或 "end_pose"
+DEFAULT_CONTROL_MODE = "joints"  # or "end_pose"
 DEFAULT_ACTION_HORIZON = 50
 DEFAULT_DEVICE = "cuda:0"
 ```
 
-### 3. 实现4个方法
+### 3) Implement 4 methods
 
-#### 方法1：加载模型
+#### Method 1: load model
 
 ```python
 def load_model(self, checkpoint_path: str, device: str):
@@ -43,7 +43,7 @@ def load_model(self, checkpoint_path: str, device: str):
     return model
 ```
 
-#### 方法2：输入转换（使用工具函数）
+#### Method 2: input conversion
 
 ```python
 def convert_input(self, obs):
@@ -51,7 +51,7 @@ def convert_input(self, obs):
     return convert_observation_to_model_input(obs, self.control_mode)
 ```
 
-#### 方法3：输出转换（使用工具函数）
+#### Method 3: output conversion
 
 ```python
 def convert_output(self, model_output):
@@ -61,7 +61,7 @@ def convert_output(self, model_output):
     )
 ```
 
-#### 方法4：模型推理
+#### Method 4: inference
 
 ```python
 def run_inference(self, model_input):
@@ -71,7 +71,7 @@ def run_inference(self, model_input):
     return output.cpu().numpy()
 ```
 
-### 4. 启动服务器
+### 4) Start server
 
 ```bash
 python launch_server.py \
@@ -80,9 +80,9 @@ python launch_server.py \
     --port 8000
 ```
 
-### 5. 测试连接
+### 5) Test connection
 
-在另一个终端：
+In another terminal:
 
 ```python
 from x2robot_client.inference_client import RobotClient
@@ -91,7 +91,7 @@ client = RobotClient(uri="ws://localhost:8000")
 client.connect_sync()
 
 obs = {
-    "CAMERA_LEFT": "...",  # base64图像
+    "CAMERA_LEFT": "...",
     "CAMERA_FRONT": "...",
     "CAMERA_RIGHT": "...",
     "ACTION_FOLLOW1_POS": [0.0] * 7,
@@ -103,12 +103,8 @@ result = client.predict_sync(obs)
 print(result)
 ```
 
-## 完整示例
+## Need More?
 
-查看 `my_policy.py` 中的注释示例，或参考 `README.md` 中的详细说明和更多示例。
-
-## 需要帮助？
-
-- **详细文档**：查看 [README.md](README.md) 了解完整的API文档、输入输出格式、通信协议等
-- **架构设计**：查看 [ARCHITECTURE.md](ARCHITECTURE.md) 了解设计原理和扩展点
-- **工具函数**：查看 `utils.py` 源码了解所有可用的工具函数及其用法
+- Full docs: `README.md`
+- Architecture notes: `ARCHITECTURE.md`
+- Utility helper details: `utils.py`

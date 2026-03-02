@@ -130,7 +130,7 @@ class OpenPIX2RobotPolicy:
 
         new_fmt = self._is_new_format(obs)
 
-        # --- 提取双臂状态 ---
+        # --- Extract dual-arm state ---
         if new_fmt:
             state = obs["state"]
             if self._is_joints_model:
@@ -156,7 +156,7 @@ class OpenPIX2RobotPolicy:
 
         openpi_obs: Dict[str, Any] = {"observation/state": state14}
 
-        # --- 提取图像 ---
+        # --- Extract images ---
         if new_fmt:
             views = obs.get("views", {})
             left = decode_jpeg_any(views.get("camera_left"), name="camera_left")
@@ -174,19 +174,19 @@ class OpenPIX2RobotPolicy:
         if right is not None:
             openpi_obs["observation/right_arm_image"] = right
 
-        # --- 提取指令 ---
+        # --- Extract instruction ---
         prompt = self._extract_instruction(obs) or self._default_prompt
         if prompt:
             openpi_obs["prompt"] = prompt
 
-        # --- 运行推理 ---
+        # --- Run inference ---
         result = self._policy.infer(openpi_obs)
         actions = np.asarray(result["actions"], dtype=np.float32)
 
         left_actions = np.concatenate([actions[:, :6], actions[:, 6:7]], axis=1)
         right_actions = np.concatenate([actions[:, 7:13], actions[:, 13:14]], axis=1)
 
-        # --- 构造输出（新格式：小写 key）---
+        # --- Build output (new format: lowercase keys) ---
         if self._control_mode == "joints":
             output = {
                 "follow1_joints": left_actions.tolist(),

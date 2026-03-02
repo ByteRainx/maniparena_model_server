@@ -1,8 +1,9 @@
 """
-工具函数模块
+Utility functions.
 
-提供常用的输入输出转换工具函数。
-兼容新格式（嵌套 state/views/instruction）和旧格式（扁平大写 key）。
+Provides common input/output conversion helpers.
+Compatible with both new format (nested state/views/instruction)
+and legacy format (flat uppercase keys).
 """
 
 import base64
@@ -15,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 def to_numpy_1d(x: Any, *, name: str = "unknown") -> np.ndarray:
     """
-    将各种格式转换为1D numpy数组
+    Convert multiple input formats into a 1D numpy array.
 
-    支持格式：
-    - None -> 空数组
-    - numpy.ndarray -> 转换为float32
-    - list/tuple -> 转换为numpy数组
-    - dict (msgpack_numpy格式) -> 重构为numpy数组
+    Supported formats:
+    - None -> empty array
+    - numpy.ndarray -> cast to float32
+    - list/tuple -> convert to numpy array
+    - dict (msgpack_numpy format) -> reconstruct numpy array
     """
     if x is None:
         return np.zeros((0,), dtype=np.float32)
@@ -40,12 +41,12 @@ def to_numpy_1d(x: Any, *, name: str = "unknown") -> np.ndarray:
 
 def decode_jpeg_any(v: Union[str, bytes, None], *, name: str = "unknown") -> Optional[np.ndarray]:
     """
-    解码JPEG图像（支持多种输入格式）
+    Decode JPEG image from multiple input formats.
 
-    支持格式：
+    Supported formats:
     - None -> None
-    - base64字符串 -> 解码为RGB numpy数组
-    - bytes/bytearray -> 解码为RGB numpy数组
+    - base64 string -> RGB numpy array
+    - bytes/bytearray -> RGB numpy array
     """
     if v is None:
         return None
@@ -66,7 +67,7 @@ def decode_jpeg_any(v: Union[str, bytes, None], *, name: str = "unknown") -> Opt
         import cv2  # type: ignore
     except ImportError as e:
         raise ImportError(
-            "缺少依赖 opencv-python：请先安装 `pip install opencv-python`"
+            "Missing dependency opencv-python: please install with `pip install opencv-python`"
         ) from e
 
     img_array = np.frombuffer(v, dtype=np.uint8)
@@ -81,9 +82,10 @@ def decode_jpeg_any(v: Union[str, bytes, None], *, name: str = "unknown") -> Opt
 
 def normalize_joints_to_7d(joints: np.ndarray, control_mode: str) -> np.ndarray:
     """
-    将关节数据标准化为7D格式（6关节 + 1夹爪）
+    Normalize joint data to 7D format (6 joints + 1 gripper).
 
-    如果输入是8D（7关节 + 1夹爪），会裁剪为7D（取前6关节 + 夹爪）
+    If input is 8D (7 joints + 1 gripper), trim to 7D
+    by taking first 6 joints + gripper.
     """
     if control_mode != "joints":
         return joints
@@ -104,12 +106,12 @@ def normalize_joints_to_7d(joints: np.ndarray, control_mode: str) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 def _is_new_format(obs: Dict[str, Any]) -> bool:
-    """检测 observation 是否使用新的嵌套格式 (state/views/instruction)。"""
+    """Check whether observation uses new nested format (state/views/instruction)."""
     return "state" in obs and isinstance(obs["state"], dict)
 
 
 def _extract_instruction(obs: Dict[str, Any]) -> str:
-    """从 observation 中提取文本指令，兼容新旧格式。"""
+    """Extract text instruction from observation, compatible with both formats."""
     raw = obs.get("instruction", None)
     if raw is None:
         raw = obs.get("prompt", "")
@@ -130,20 +132,21 @@ def convert_observation_to_model_input(
     decode_images: bool = True,
 ) -> Dict[str, Any]:
     """
-    将x2robot_client格式的observation转换为模型输入格式。
+    Convert x2robot_client observation into model input format.
 
-    同时兼容新格式（嵌套 state/views/instruction）和旧格式（扁平大写 key）。
+    Compatible with both new format (nested state/views/instruction)
+    and legacy format (flat uppercase keys).
 
     Returns:
-        模型输入格式的字典，包含：
-        - left/front/right: RGB numpy数组或原始数据
-        - state: 14D状态向量 [left(7), right(7)]
-        - instruction: 文本指令
-        - state/* : 额外状态字段（仅新格式，如 head_pos, lift 等）
+        A model-input dictionary containing:
+        - left/front/right: RGB numpy arrays or raw data
+        - state: 14D state vector [left(7), right(7)]
+        - instruction: text instruction
+        - state/*: extra state fields (for model use)
     """
     new_fmt = _is_new_format(obs)
 
-    # --- 图像 ---
+    # --- Images ---
     images: Dict[str, Any] = {}
     if new_fmt:
         views = obs.get("views", {})
@@ -159,7 +162,7 @@ def convert_observation_to_model_input(
                 dst_key = key.lower().replace("camera_", "")
                 images[dst_key] = decode_jpeg_any(raw, name=key) if decode_images else raw
 
-    # --- 双臂状态 ---
+    # --- Dual-arm state ---
     if new_fmt:
         state_dict = obs["state"]
         if control_mode == "joints":
@@ -206,7 +209,7 @@ def convert_observation_to_model_input(
         "instruction": instruction,
     }
 
-    # --- 额外状态字段（透传，供模型按需使用）---
+    # --- Extra state fields (pass-through for model use) ---
     _EXTRA_STATE_KEYS = [
         "follow1_pos", "follow2_pos",
         "follow1_joints", "follow2_joints",
@@ -246,17 +249,18 @@ def convert_model_output_to_x2robot_format(
     model_output_text: str = "",
 ) -> Dict[str, Any]:
     """
-    将模型输出转换为x2robot_client期望的新格式（小写 key）。
+    Convert model output to x2robot_client new-format response (lowercase keys).
 
     Args:
-        actions: 双臂动作，shape (T, 14)。14D格式: [left(6), left_gripper(1), right(6), right_gripper(1)]
-        control_mode: 控制模式
-        action_horizon: action序列长度（仅用于校验提醒）
-        head_actions: 头部动作 (T, 2)  [yaw, pitch]，可选
-        lift_actions: 升降机动作 (T, 1)，可选
-        velocity_actions: 底盘速度 (T, 3) [vx, vy, omega]，可选
-        car_pose_odom_actions: 底盘位姿 (T, 3)，可选
-        model_output_text: 模型文本输出，可选
+        actions: Dual-arm actions, shape (T, 14). 14D format:
+            [left(6), left_gripper(1), right(6), right_gripper(1)]
+        control_mode: Control mode.
+        action_horizon: Action horizon (used for warning/check).
+        head_actions: Optional head actions (T, 2) [yaw, pitch].
+        lift_actions: Optional lift actions (T, 1).
+        velocity_actions: Optional chassis velocity (T, 3) [vx, vy, omega].
+        car_pose_odom_actions: Optional chassis pose (T, 3).
+        model_output_text: Optional model text output.
     """
     if not isinstance(actions, np.ndarray):
         actions = np.array(actions)
@@ -289,7 +293,7 @@ def convert_model_output_to_x2robot_format(
             "follow2_pos": right_actions.tolist(),
         }
 
-    # --- 额外输出字段 ---
+    # --- Extra output fields ---
     if head_actions is not None:
         result["head_pos"] = np.asarray(head_actions).tolist()
     if lift_actions is not None:
@@ -305,7 +309,7 @@ def convert_model_output_to_x2robot_format(
 
 
 # ---------------------------------------------------------------------------
-# Legacy format converter (旧格式兼容)
+# Legacy format converter
 # ---------------------------------------------------------------------------
 
 def convert_model_output_to_legacy_format(
@@ -318,15 +322,15 @@ def convert_model_output_to_legacy_format(
     car_pose_actions: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """
-    将模型输出转换为 CX001 客户端格式（大写 key）。
+    Convert model output to CX001 client format (uppercase keys).
 
-    CX001 客户端期望的 key：
-      FOLLOW1_POS / FOLLOW2_POS  — 双臂轨迹 (T, 7)
-      HEAD_POS                   — 头部 (T, 2)  [yaw, pitch]
-      LIFT_OUT                   — 升降 (T, 1)
-      CAR_POSE_OUT               — 底盘 (T, 3)  [x, y, theta]
+    Expected keys for CX001:
+      FOLLOW1_POS / FOLLOW2_POS  — dual-arm trajectories (T, 7)
+      HEAD_POS                   — head (T, 2) [yaw, pitch]
+      LIFT_OUT                   — lift (T, 1)
+      CAR_POSE_OUT               — chassis (T, 3) [x, y, theta]
 
-    所有值必须是 List[List[float]]（内部已调用 .tolist()）。
+    All values must be List[List[float]] (.tolist() is applied internally).
     """
     if not isinstance(actions, np.ndarray):
         actions = np.array(actions)

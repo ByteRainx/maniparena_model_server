@@ -1,7 +1,7 @@
 """
-服务器启动文件
+Server entrypoint.
 
-参考infer_new.py的简洁风格，配置清晰，使用简单。
+Keeps a simple infer_new.py-style startup flow and clear CLI configuration.
 """
 
 import argparse
@@ -9,7 +9,7 @@ import logging
 import sys
 from pathlib import Path
 
-# 添加当前目录到路径
+# Add current directory to Python path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
@@ -18,66 +18,66 @@ from my_policy import MyPolicy, DEFAULT_CHECKPOINT_PATH, DEFAULT_CONTROL_MODE, D
 
 
 def main():
-    """主函数：启动WebSocket服务器"""
+    """Main function: start the WebSocket server."""
     
     parser = argparse.ArgumentParser(
-        description="通用模型服务器 - 适配x2robot_client",
+        description="Universal model server - compatible with x2robot_client",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
-    # 模型配置参数
+    # Model configuration
     parser.add_argument(
         "--checkpoint",
         type=str,
         default=DEFAULT_CHECKPOINT_PATH,
-        help="Checkpoint路径"
+        help="Checkpoint path"
     )
     parser.add_argument(
         "--control-mode",
         type=str,
         default=DEFAULT_CONTROL_MODE,
         choices=["joints", "end_pose"],
-        help="控制模式: joints（关节控制）或 end_pose（末端位姿控制）"
+        help="Control mode: joints or end_pose"
     )
     parser.add_argument(
         "--action-horizon",
         type=int,
         default=DEFAULT_ACTION_HORIZON,
-        help="Action序列长度（模型输出的action步数）"
+        help="Action sequence length (model output horizon)"
     )
     parser.add_argument(
         "--device",
         type=str,
         default=DEFAULT_DEVICE,
-        help="设备 (cuda:0, cuda:1, cpu等)"
+        help="Device (cuda:0, cuda:1, cpu, etc.)"
     )
     
-    # 服务器配置参数
+    # Server configuration
     parser.add_argument(
         "--port",
         type=int,
         default=8000,
-        help="服务器端口"
+        help="Server port"
     )
     parser.add_argument(
         "--host",
         type=str,
         default="0.0.0.0",
-        help="服务器地址（0.0.0.0表示监听所有网络接口）"
+        help="Server host (0.0.0.0 means listen on all interfaces)"
     )
     
-    # 日志配置
+    # Logging configuration
     parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="日志级别"
+        help="Log level"
     )
     
     args = parser.parse_args()
     
-    # 配置日志
+    # Configure logging
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -85,9 +85,9 @@ def main():
     
     logger = logging.getLogger(__name__)
     
-    # 打印配置信息
+    # Print startup configuration
     logger.info("=" * 60)
-    logger.info("启动通用模型服务器")
+    logger.info("Starting universal model server")
     logger.info("=" * 60)
     logger.info(f"Checkpoint: {args.checkpoint}")
     logger.info(f"Control Mode: {args.control_mode}")
@@ -96,7 +96,7 @@ def main():
     logger.info(f"Server: {args.host}:{args.port}")
     logger.info("-" * 60)
     
-    # 创建Policy
+    # Create policy
     try:
         policy = MyPolicy(
             checkpoint_path=args.checkpoint,
@@ -108,7 +108,7 @@ def main():
         logger.error(f"Failed to load policy: {e}", exc_info=True)
         sys.exit(1)
     
-    # 创建并启动服务器
+    # Create and run server
     server = WebSocketModelServer(
         policy=policy,
         host=args.host,
@@ -118,9 +118,9 @@ def main():
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        logger.info("\n服务器已停止（Ctrl+C）")
+        logger.info("\nServer stopped (Ctrl+C)")
     except Exception as e:
-        logger.error(f"服务器运行出错: {e}", exc_info=True)
+        logger.error(f"Server runtime error: {e}", exc_info=True)
         sys.exit(1)
 
 
