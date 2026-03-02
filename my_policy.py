@@ -37,11 +37,16 @@ class MyPolicy(ModelPolicy):
         return convert_observation_to_model_input(obs, self.control_mode, decode_images=False)
 
     def convert_output(self, model_output: Any) -> Dict[str, Any]:
-        """Convert model output -> x2robot_client response (new lowercase format).
+        """Convert model output -> x2robot_client response dict.
 
         model_output is expected to be np.ndarray of shape (action_horizon, 14).
-        Override this method if your model outputs additional fields like
-        head_pos, lift, velocity_decomposed, etc.
+
+        IMPORTANT — all values MUST be Python lists, NOT numpy arrays.
+        The client does `[last_pos] + actions` which silently broadcasts
+        if actions is a numpy array. Always call .tolist().
+
+        Desktop (14D): use lowercase keys  → convert_model_output_to_x2robot_format()
+        CX001  (20D): use UPPERCASE keys → convert_model_output_to_legacy_format()
         """
         from utils import convert_model_output_to_x2robot_format
 

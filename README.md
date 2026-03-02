@@ -1,6 +1,6 @@
 # 通用模型服务器模板
 
-适配最新 `x2robot_client`（EX001 / Desktop 等）的通用模型服务器模板。参赛者只需实现模型相关部分，WebSocket 通信与协议处理已封装完毕。
+适配 `x2robot_client`（Desktop / CX001）的通用模型服务器模板。参赛者只需实现模型相关部分，WebSocket 通信与协议处理已封装完毕。
 
 ## 整体架构
 
@@ -12,11 +12,8 @@ maniparena_model_server/
 ├── utils.py               # 工具函数（可选使用）
 ├── launch_server.py       # 服务器启动文件（不需要修改）
 ├── requirements.txt       # 依赖列表
-├── README.md              # 本文档
-├── ARCHITECTURE.md        # 架构设计说明
-└── openpi_branch/         # OpenPI模型适配
-    ├── openpi_policy.py
-    └── launch_openpi_server.py
+└── examples/              # 参考实现
+    └── pytorch_policy_example.py
 ```
 
 ### 数据流
@@ -38,6 +35,68 @@ WebSocket服务器
 x2robot_client
 ```
 
+## 两种任务类型
+
+| | Desktop (14D) | CX001 Mobile Manipulation (20D) |
+|---|---|---|
+| 机器人 | EX001 桌面双臂 | CX001 移动操作 |
+| 动作维度 | 14（左臂7D + 右臂7D） | 20（14D双臂 + 2D头部 + 1D升降 + 3D底盘） |
+| 输出 Key | **小写** | **大写** |
+| 工具函数 | `convert_model_output_to_x2robot_format()` | `convert_model_output_to_legacy_format()` |
+
+### 输出 Key 对照表
+
+| 字段 | Desktop Key | CX001 Key | 每步维度 |
+|------|-----------|-----------|---------|
+| 左臂 | `follow1_pos` | `FOLLOW1_POS` | `[7]` |
+| 右臂 | `follow2_pos` | `FOLLOW2_POS` | `[7]` |
+| 头部 | — | `HEAD_POS` | `[2]` |
+| 升降 | — | `LIFT_OUT` | `[1]` |
+| 底盘 | — | `CAR_POSE_OUT` | `[3]` |
+
+## ⚠ 关键注意事项
+
+### 1. 所有输出值必须调用 `.tolist()`
+
+Desktop 客户端在插值时会执行：
+
+```python
+arm1_actions = [self.last_arm_l_pos] + arm1_actions
+```
+
+如果 `arm1_actions` 是 **numpy 数组**，Python 的 `+` 会触发元素级广播（broadcasting）而非列表拼接，**轨迹数据被静默破坏**。
+
+**正确做法：**
+
+```python
+def convert_output(self, model_output):
+    actions = np.array(model_output)        # shape (T, 14)
+    return {
+        "follow1_pos": actions[:, :7].tolist(),   # .tolist() 是必须的
+        "follow2_pos": actions[:, 7:14].tolist(),
+    }
+```
+
+### 2. Desktop 与 CX001 输出 Key 大小写不同
+
+| 客户端 | Key 格式 | 使用错误大小写的后果 |
+|--------|---------|---------|
+| Desktop | 小写 `follow1_pos` | 大写 → `.get()` 返回 `None` → 不执行动作 |
+| CX001 | 大写 `FOLLOW1_POS` | 小写 → `.get()` 返回 `[]` → 机器人不动 |
+
+### 3. 值格式必须是 `List[List[float]]`
+
+```python
+# ✅ 正确 — Python 嵌套列表
+"follow1_pos": [[0.1, 0.2, 0.3, 0.0, 0.0, 0.0, 1.0], ...]
+
+# ❌ 错误 — numpy 数组（msgpack 序列化后客户端可能无法正确解析）
+"follow1_pos": np.array([[0.1, 0.2, ...], ...])
+
+# ❌ 错误 — 一维列表（缺少时间维度）
+"follow1_pos": [0.1, 0.2, 0.3, ...]
+```
+
 ## 快速开始
 
 ### 1. 安装依赖
@@ -46,101 +105,88 @@ x2robot_client
 pip install -r requirements.txt
 ```
 
-如果需要解码图像为 numpy RGB：
-
-```bash
-pip install opencv-python
-```
-
-### 2. 修改配置
-
-编辑 `my_policy.py`，修改顶部默认值：
-
-```python
-DEFAULT_CHECKPOINT_PATH = "/path/to/your/checkpoint"
-DEFAULT_CONTROL_MODE = "joints"  # 或 "end_pose"
-DEFAULT_ACTION_HORIZON = 50
-DEFAULT_DEVICE = "cuda:0"
-```
-
-### 3. 实现方法
+### 2. 实现 `my_policy.py`
 
 编辑 `my_policy.py`，实现：
 
 1. **`load_model()`** — 加载模型（必须）
 2. **`convert_input()`** — 输入格式转换（可选，推荐使用工具函数）
-3. **`convert_output()`** — 输出格式转换（必须，推荐使用工具函数）
-4. **`run_inference()`** — 模型推理（必须）
+3. **`run_inference()`** — 模型推理（必须）
+4. **`convert_output()`** — 输出格式转换（必须，**注意 `.tolist()`**）
 
-### 4. 启动服务器
+### 3. 启动服务器
 
 ```bash
 python launch_server.py \
     --checkpoint /path/to/your/checkpoint \
-    --control-mode joints \
+    --control-mode end_pose \
     --port 8000
 ```
 
-## 输入输出格式（v2 — 与最新 x2robot_client 对齐）
+## 输入格式
 
-### 输入格式（来自 x2robot_client）
-
-最新的 EX001 / Desktop 客户端使用**嵌套字典**格式：
+### Desktop 客户端（嵌套字典格式）
 
 ```python
 {
     "state": {
-        # --- 双臂末端位姿 (7D: x, y, z, roll, pitch, yaw, gripper) ---
-        "follow1_pos": np.array([...], dtype=np.float32),   # (7,) 左臂
-        "follow2_pos": np.array([...], dtype=np.float32),   # (7,) 右臂
-        # --- 关节角度（可选） ---
-        "follow1_joints": np.array([...], dtype=np.float32),
-        "follow2_joints": np.array([...], dtype=np.float32),
-        # --- 电流/力矩反馈 ---
-        "follow1_joints_cur": np.array([...], dtype=np.float32),
-        "follow2_joints_cur": np.array([...], dtype=np.float32),
-        # --- 关节速度（可选） ---
-        "follow1_joints_dev": np.array([...], dtype=np.float32),
-        "follow2_joints_dev": np.array([...], dtype=np.float32),
-        # --- 头部 / 升降 / 底盘（全身机器人） ---
-        "head_pos": np.array([yaw, pitch], dtype=np.float32),         # (2,)
-        "lift": np.array([height], dtype=np.float32),                 # (1,)
-        "car_pose": np.array([x, y, theta], dtype=np.float32),       # (3,)
-        "velocity_decomposed": np.array([vx, vy, omega], dtype=np.float32),      # (3,)
-        "velocity_decomposed_odom": np.array([vx, vy, omega], dtype=np.float32), # (3,)
+        "follow1_pos": [x, y, z, roll, pitch, yaw, gripper],   # 7D 左臂
+        "follow2_pos": [x, y, z, roll, pitch, yaw, gripper],   # 7D 右臂
+        "follow1_joints_cur": [...],
+        "follow2_joints_cur": [...],
     },
     "views": {
-        "camera_left": "base64_jpeg_string",
-        "camera_front": "base64_jpeg_string",
-        "camera_right": "base64_jpeg_string",
+        "camera_left": "<base64 JPEG>",
+        "camera_front": "<base64 JPEG>",
+        "camera_right": "<base64 JPEG>",
     },
     "instruction": np.array(["Pick up the cup."], dtype=np.object_),
 }
 ```
 
-> 工具函数 `convert_observation_to_model_input()` 同时兼容旧的扁平大写格式（CAMERA_LEFT / ACTION_FOLLOW1_POS 等）。
+### CX001ClientROS2 客户端（扁平字典，大写 key）
 
-### 输出格式（返回给 x2robot_client）
-
-使用**小写 key**，与 `state` 输入字段名称对应：
+> 比赛移动操作赛道使用 `CX001ClientROS2`。注意：图像是 **numpy RGB 数组**（非 base64），状态是带 `ACTION_` 前缀的大写 key。
 
 ```python
 {
-    # --- 双臂轨迹 (T, 7) ---
-    "follow1_pos": [[x,y,z,r,p,y,gripper], ...],   # end_pose模式
+    "CAMERA_LEFT": np.ndarray (H, W, 3),                              # numpy RGB
+    "CAMERA_FRONT": np.ndarray (H, W, 3),
+    "CAMERA_RIGHT": np.ndarray (H, W, 3),
+    "ACTION_FOLLOW1_POS": np.array([7D], dtype=np.float32),           # 左臂 7D
+    "ACTION_FOLLOW2_POS": np.array([7D], dtype=np.float32),           # 右臂 7D
+    "ACTION_FOLLOW1_JOINTS_CUR": np.array([...], dtype=np.float32),   # 电流
+    "ACTION_FOLLOW2_JOINTS_CUR": np.array([...], dtype=np.float32),
+    "CAR_POSE": np.array([x, y, theta], dtype=np.float32),            # 底盘 (3,)
+    "LIFT": np.array([height], dtype=np.float32),                      # 升降 (1,)
+    "HEAD_POS": np.array([yaw, pitch], dtype=np.float32),              # 头部 (2,)
+    "INSTRUCTION": np.array(["task description"], dtype=np.object_),
+}
+```
+
+> 工具函数 `convert_observation_to_model_input()` 自动兼容 Desktop（嵌套）和 CX001（扁平）两种格式。
+> 图像字段：Desktop 传 base64 JPEG 字符串，CX001 传 numpy RGB 数组，`decode_images=True` 时均能正确处理。
+
+## 输出格式
+
+### Desktop 输出（14D，小写 key）
+
+```python
+{
+    "follow1_pos": [[x,y,z,r,p,y,gripper], ...],   # List[List[float]], (T, 7)
     "follow2_pos": [[x,y,z,r,p,y,gripper], ...],
-    # --- 或 joints 模式 ---
-    "follow1_joints": [[j1,...,j6,gripper], ...],
-    "follow2_joints": [[j1,...,j6,gripper], ...],
+}
+```
 
-    # --- 全身控制（可选） ---
-    "head_pos": [[yaw, pitch], ...],                # (T, 2)
-    "lift": [[height], ...],                        # (T, 1)
-    "velocity_decomposed": [[vx, vy, omega], ...],  # (T, 3)
-    "car_pose_odom": [[x, y, theta], ...],          # (T, 3)
+### CX001 输出（20D，大写 key）
 
-    # --- 文本输出（可选） ---
-    "model_output_text": "optional model text response",
+```python
+{
+    "FOLLOW1_POS": [[x,y,z,r,p,y,gripper], ...],   # List[List[float]], (T, 7)
+    "FOLLOW2_POS": [[x,y,z,r,p,y,gripper], ...],
+    "HEAD_POS": [[yaw, pitch], ...],                 # (T, 2)
+    "LIFT_OUT": [[height], ...],                      # (T, 1)
+    "CAR_POSE_OUT": [[x, y, theta], ...],            # (T, 3)
 }
 ```
 
@@ -154,13 +200,13 @@ from utils import convert_observation_to_model_input
 model_input = convert_observation_to_model_input(obs, control_mode)
 # 返回: {
 #   "left": RGB_array, "front": RGB_array, "right": RGB_array,
-#   "state": 14D_array,
+#   "state": np.array(14,),
 #   "instruction": str,
-#   "state/head_pos": ..., "state/lift": ..., ...  (新格式额外字段)
+#   "state/head_pos": ..., "state/lift": ..., ...  (额外字段)
 # }
 ```
 
-### 输出转换
+### Desktop 输出转换（14D）
 
 ```python
 from utils import convert_model_output_to_x2robot_format
@@ -169,37 +215,36 @@ result = convert_model_output_to_x2robot_format(
     actions,           # (T, 14) numpy array
     control_mode,
     action_horizon,
-    head_actions=...,  # (T, 2) 可选
-    lift_actions=...,  # (T, 1) 可选
-    velocity_actions=...,  # (T, 3) 可选
 )
+# 返回: {"follow1_pos": [[...], ...], "follow2_pos": [[...], ...]}
 ```
 
-### 旧格式兼容
-
-如需为 CX001 等旧客户端输出大写 key 格式：
+### CX001 输出转换（20D）
 
 ```python
 from utils import convert_model_output_to_legacy_format
 
-result = convert_model_output_to_legacy_format(actions, control_mode, action_horizon)
-# 返回: {"FOLLOW1_POS": ..., "FOLLOW2_POS": ..., ...}
+result = convert_model_output_to_legacy_format(
+    actions,           # (T, 14) numpy array
+    control_mode,
+    action_horizon,
+    head_actions=...,       # (T, 2) 可选
+    lift_actions=...,       # (T, 1) 可选
+    car_pose_actions=...,   # (T, 3) 可选
+)
+# 返回: {"FOLLOW1_POS": ..., "FOLLOW2_POS": ..., "HEAD_POS": ..., "LIFT_OUT": ..., "CAR_POSE_OUT": ...}
 ```
 
 ## 通信协议
 
-### WebSocket协议
-
 1. **连接建立**：客户端连接后，服务器立即发送 metadata（msgpack 编码）
-2. **推理请求**：客户端发送 observation（msgpack 编码）
-3. **推理响应**：服务器返回 action（msgpack 编码）
-4. **错误处理**：如果出错，服务器发送文本错误消息
+2. **推理循环**：客户端发送 observation → 服务器返回 action（均为 msgpack 编码）
 
-### Metadata格式
+### Metadata 格式
 
 ```python
 {
-    "control_mode": "joints" or "end_pose",
+    "control_mode": "end_pose",   # "joints" 或 "end_pose"
     "action_horizon": 50,
     "state_dim": 14,
     "state_dim_per_arm": 7,
@@ -213,52 +258,9 @@ result = convert_model_output_to_legacy_format(actions, control_mode, action_hor
 python launch_server.py --help
 ```
 
-主要参数：
-- `--checkpoint`: Checkpoint路径
+- `--checkpoint`: Checkpoint 路径
 - `--control-mode`: 控制模式（joints / end_pose）
-- `--action-horizon`: Action序列长度
-- `--device`: 设备（cuda:0 / cpu 等）
+- `--action-horizon`: Action 序列长度
+- `--device`: 设备（cuda:0 / cpu）
 - `--port`: 服务器端口（默认 8000）
 - `--host`: 服务器地址（默认 0.0.0.0）
-- `--log-level`: 日志级别
-
-## 测试连接
-
-```python
-import numpy as np
-from x2robot_client.inference_client import RobotClient
-
-client = RobotClient(uri="ws://localhost:8000")
-client.connect_sync()
-
-obs = {
-    "state": {
-        "follow1_pos": np.zeros(7, dtype=np.float32),
-        "follow2_pos": np.zeros(7, dtype=np.float32),
-    },
-    "views": {
-        "camera_left": None,
-        "camera_front": None,
-        "camera_right": None,
-    },
-    "instruction": np.array(["Pick up the cup."], dtype=np.object_),
-}
-
-result = client.predict_sync(obs)
-print(result.keys())
-# dict_keys(['follow1_pos', 'follow2_pos', ...])
-```
-
-## 注意事项
-
-1. **向后兼容**：`convert_observation_to_model_input()` 自动检测新旧格式
-2. **线程安全**：服务器使用锁保证推理的线程安全
-3. **消息大小**：不限制，适合传输图像数据
-4. **设备管理**：使用 `CUDA_VISIBLE_DEVICES` 环境变量控制 GPU
-5. **opencv 依赖**：仅在解码图像为 numpy RGB 时需要
-
-## 更多信息
-
-- **快速上手**：查看 `QUICKSTART.md`
-- **架构设计**：查看 `ARCHITECTURE.md`
-- **API 定义**：查看 `x2robot_client/API.md`

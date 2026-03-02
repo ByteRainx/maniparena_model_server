@@ -50,6 +50,9 @@ def decode_jpeg_any(v: Union[str, bytes, None], *, name: str = "unknown") -> Opt
     if v is None:
         return None
 
+    if isinstance(v, np.ndarray):
+        return v
+
     if isinstance(v, str):
         try:
             v = base64.b64decode(v)
@@ -172,8 +175,14 @@ def convert_observation_to_model_input(
             follow1 = to_numpy_1d(state_dict.get("follow1_pos"), name="follow1_pos")
             follow2 = to_numpy_1d(state_dict.get("follow2_pos"), name="follow2_pos")
     else:
-        follow1 = to_numpy_1d(obs.get("ACTION_FOLLOW1_POS"), name="ACTION_FOLLOW1_POS")
-        follow2 = to_numpy_1d(obs.get("ACTION_FOLLOW2_POS"), name="ACTION_FOLLOW2_POS")
+        follow1 = to_numpy_1d(
+            obs.get("ACTION_FOLLOW1_POS") or obs.get("follow1_pos"),
+            name="follow1",
+        )
+        follow2 = to_numpy_1d(
+            obs.get("ACTION_FOLLOW2_POS") or obs.get("follow2_pos"),
+            name="follow2",
+        )
 
     if control_mode == "joints":
         follow1 = normalize_joints_to_7d(follow1, control_mode)
@@ -197,19 +206,24 @@ def convert_observation_to_model_input(
         "instruction": instruction,
     }
 
-    # --- 额外状态字段（新格式透传，供模型按需使用）---
+    # --- 额外状态字段（透传，供模型按需使用）---
+    _EXTRA_STATE_KEYS = [
+        "follow1_pos", "follow2_pos",
+        "follow1_joints", "follow2_joints",
+        "follow1_joints_cur", "follow2_joints_cur",
+        "follow1_joints_dev", "follow2_joints_dev",
+        "head_pos", "lift", "car_pose",
+        "velocity_decomposed", "velocity_decomposed_odom",
+    ]
     if new_fmt:
         state_dict = obs["state"]
-        _EXTRA_STATE_KEYS = [
-            "follow1_pos", "follow2_pos",
-            "follow1_joints", "follow2_joints",
-            "follow1_joints_cur", "follow2_joints_cur",
-            "follow1_joints_dev", "follow2_joints_dev",
-            "head_pos", "lift", "car_pose",
-            "velocity_decomposed", "velocity_decomposed_odom",
-        ]
         for k in _EXTRA_STATE_KEYS:
             v = state_dict.get(k)
+            if v is not None:
+                model_input[f"state/{k}"] = to_numpy_1d(v, name=k)
+    else:
+        for k in _EXTRA_STATE_KEYS:
+            v = obs.get(k) or obs.get(k.upper()) or obs.get(f"ACTION_{k.upper()}")
             if v is not None:
                 model_input[f"state/{k}"] = to_numpy_1d(v, name=k)
 
@@ -298,9 +312,21 @@ def convert_model_output_to_legacy_format(
     actions: np.ndarray,
     control_mode: str,
     action_horizon: int,
+    *,
+    head_actions: Optional[np.ndarray] = None,
+    lift_actions: Optional[np.ndarray] = None,
+    car_pose_actions: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """
-    将模型输出转换为旧格式（大写 key），用于 CX001 等旧客户端。
+    将模型输出转换为 CX001 客户端格式（大写 key）。
+
+    CX001 客户端期望的 key：
+      FOLLOW1_POS / FOLLOW2_POS  — 双臂轨迹 (T, 7)
+      HEAD_POS                   — 头部 (T, 2)  [yaw, pitch]
+      LIFT_OUT                   — 升降 (T, 1)
+      CAR_POSE_OUT               — 底盘 (T, 3)  [x, y, theta]
+
+    所有值必须是 List[List[float]]（内部已调用 .tolist()）。
     """
     if not isinstance(actions, np.ndarray):
         actions = np.array(actions)
@@ -312,16 +338,25 @@ def convert_model_output_to_legacy_format(
     right_actions = np.concatenate([actions[:, 7:13], actions[:, 13:14]], axis=1)
 
     if control_mode == "joints":
-        return {
+        result: Dict[str, Any] = {
             "FOLLOW1_JOINTS": left_actions.tolist(),
             "FOLLOW2_JOINTS": right_actions.tolist(),
             "FOLLOW1_POS": [],
             "FOLLOW2_POS": [],
         }
     else:
-        return {
+        result = {
             "FOLLOW1_POS": left_actions.tolist(),
             "FOLLOW2_POS": right_actions.tolist(),
             "FOLLOW1_JOINTS": [],
             "FOLLOW2_JOINTS": [],
         }
+
+    if head_actions is not None:
+        result["HEAD_POS"] = np.asarray(head_actions).tolist()
+    if lift_actions is not None:
+        result["LIFT_OUT"] = np.asarray(lift_actions).tolist()
+    if car_pose_actions is not None:
+        result["CAR_POSE_OUT"] = np.asarray(car_pose_actions).tolist()
+
+    return result
