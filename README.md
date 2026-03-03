@@ -123,6 +123,59 @@ python launch_server.py \
     --port 8000
 ```
 
+## Self-check Before Submission
+
+Use the built-in mock tools in `tools/` to validate your server before submission.
+
+### 1) Ping / handshake check
+
+Checks:
+- WebSocket connection is reachable
+- First server frame is msgpack metadata
+- Required metadata fields exist (`control_mode`, `action_horizon`, `state_dim`)
+
+```bash
+python tools/mock_ping.py --uri ws://127.0.0.1:8000
+```
+
+### 2) Request/response schema check
+
+Checks:
+- Desktop schema (lowercase keys, list-of-lists trajectories)
+- CX001 schema (UPPERCASE keys, optional MM extras)
+- Common mistakes: wrong key casing, numpy return (missing `.tolist()`), missing time dimension
+
+```bash
+# Check both Desktop and CX001
+python tools/mock_schema_check.py --uri ws://127.0.0.1:8000 --mode both
+
+# If you want strict CX001 MM fields (HEAD_POS/LIFT_OUT/CAR_POSE_OUT)
+python tools/mock_schema_check.py --uri ws://127.0.0.1:8000 --mode cx001 --require-mm-extras
+```
+
+### 3) Open-loop evaluation
+
+Runs offline samples through your server, then saves:
+- `*.npz` with `pred`/`gt` arrays (default)
+- `*.jpg` plots only when explicitly enabled
+
+```bash
+# Default: save npz only (plotting disabled)
+python tools/mock_openloop_eval.py \
+    --uri ws://127.0.0.1:8000 \
+    --data-dir /path/to/offline_dataset \
+    --save-dir /path/to/openloop_outputs \
+    --sample-limit 3
+
+# Optional: enable plotting
+python tools/mock_openloop_eval.py \
+    --uri ws://127.0.0.1:8000 \
+    --data-dir /path/to/offline_dataset \
+    --save-dir /path/to/openloop_outputs \
+    --sample-limit 3 \
+    --enable-plots
+```
+
 ## Input Format
 
 ### Desktop client (nested format)
