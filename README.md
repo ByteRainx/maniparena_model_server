@@ -176,6 +176,10 @@ python tools/mock_openloop_eval.py \
     --enable-plots
 ```
 
+`--data-dir` is LeRobot-only:
+- expected layout: `data/chunk-*/episode_*.parquet`
+- optional videos: sibling `videos/chunk-*/observation.images.*/episode_*.mp4`
+
 ## Input Format
 
 ### Desktop client (nested format)

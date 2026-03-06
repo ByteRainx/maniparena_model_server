@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Open-loop evaluation helper for ManipArena server.
+"""Open-loop evaluation helper for ManipArena server (LeRobot-only).
 
 Features:
-- Reads offline samples (trajectory + videos) and queries the server step-by-step.
+- Reads LeRobot episodes (parquet + videos) and queries the server step-by-step.
 - Saves `pred`/`gt` arrays to `.npz` for analysis.
 - Plotting is optional and disabled by default (`--enable-plots`).
 """
@@ -13,7 +13,6 @@ import argparse
 import asyncio
 import base64
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -99,64 +98,91 @@ def _find_video(sample_dir: Path, names: list[str]) -> np.ndarray:
     return np.zeros((0, 64, 64, 3), dtype=np.uint8)
 
 
-def _load_trajectory(sample_dir: Path, sample_name: str) -> list[dict[str, Any]]:
-    candidates = [
-        sample_dir / f"{sample_name}.json",
-        sample_dir / "trajectory.json",
-        sample_dir / "data.json",
-    ]
-    traj_file = next((p for p in candidates if p.exists()), None)
-    if traj_file is None:
-        raise FileNotFoundError(f"No trajectory json found in {sample_dir}")
-
-    with traj_file.open("r", encoding="utf-8") as f:
-        obj = json.load(f)
-
-    if isinstance(obj, dict):
-        if isinstance(obj.get("data"), list):
-            return obj["data"]
-        if isinstance(obj.get("trajectory"), list):
-            return obj["trajectory"]
-    if isinstance(obj, list):
-        return obj
-    raise ValueError(f"Unsupported trajectory format: {traj_file}")
-
-
-def _load_case(sample_dir: Path, sample_name: str) -> dict[str, Any]:
-    traj = _load_trajectory(sample_dir, sample_name)
-
-    follow1: list[list[float]] = []
-    follow2: list[list[float]] = []
-    for raw in traj:
-        step = raw.get("state", raw) if isinstance(raw, dict) else {}
-        l = _extract_arm_7d(step, "left")
-        r = _extract_arm_7d(step, "right")
-        if l is None or r is None:
-            continue
-        follow1.append(l)
-        follow2.append(r)
-
-    if not follow1 or not follow2:
-        raise ValueError(f"No valid follow1/follow2 7D states found in {sample_dir}")
-
-    return {
-        "follow1_gt": follow1,
-        "follow2_gt": follow2,
-        "camera_front": _find_video(sample_dir, ["faceImg.mp4", "camera_front.mp4", "front.mp4"]),
-        "camera_left": _find_video(sample_dir, ["leftImg.mp4", "camera_left.mp4", "left.mp4"]),
-        "camera_right": _find_video(sample_dir, ["rightImg.mp4", "camera_right.mp4", "right.mp4"]),
-    }
+def _resolve_lerobot_paths(data_dir: Path) -> tuple[Path | None, Path | None]:
+    # data_dir can be either:
+    # 1) <dataset_root>/data
+    # 2) <dataset_root>
+    if (data_dir / "chunk-000").exists():
+        data_root = data_dir
+        videos_root = data_dir.parent / "videos" if (data_dir.parent / "videos").exists() else None
+        return data_root, videos_root
+    if (data_dir / "data").exists() and (data_dir / "videos").exists():
+        return data_dir / "data", data_dir / "videos"
+    return None, None
 
 
 def _discover_samples(data_dir: Path) -> list[str]:
-    report = data_dir / "report.json"
-    if report.exists():
-        with report.open("r", encoding="utf-8") as f:
-            obj = json.load(f)
-        names = obj.get("sample_name", [])
-        if isinstance(names, list) and names:
-            return [str(x) for x in names]
-    return sorted([p.name for p in data_dir.iterdir() if p.is_dir()])
+    # LeRobot parquet episodes only: data/chunk-xxx/episode_xxxxxx.parquet
+    data_root, _ = _resolve_lerobot_paths(data_dir)
+    if data_root is not None:
+        out: list[str] = []
+        for chunk_dir in sorted([p for p in data_root.iterdir() if p.is_dir() and p.name.startswith("chunk-")]):
+            for ep_file in sorted(chunk_dir.glob("episode_*.parquet")):
+                out.append(f"{chunk_dir.name}/{ep_file.stem}")
+        if out:
+            return out
+
+    raise FileNotFoundError(
+        "No LeRobot episodes found. Expected either "
+        "<dataset_root>/data/chunk-*/episode_*.parquet or <dataset_root>/chunk-*/episode_*.parquet."
+    )
+
+
+def _load_lerobot_case(data_dir: Path, sample_token: str) -> dict[str, Any]:
+    data_root, videos_root = _resolve_lerobot_paths(data_dir)
+    if data_root is None:
+        raise FileNotFoundError(f"Cannot locate LeRobot data root from {data_dir}")
+
+    if "/" not in sample_token:
+        raise ValueError(f"Invalid LeRobot sample token: {sample_token}")
+    chunk_name, episode_name = sample_token.split("/", 1)
+    parquet_path = data_root / chunk_name / f"{episode_name}.parquet"
+    if not parquet_path.exists():
+        raise FileNotFoundError(f"Parquet not found: {parquet_path}")
+
+    import pandas as pd
+
+    df = pd.read_parquet(parquet_path)
+    if "observation.state" not in df.columns:
+        raise KeyError(f"{parquet_path} missing observation.state")
+    if "action" not in df.columns:
+        raise KeyError(f"{parquet_path} missing action")
+
+    states = np.stack([np.asarray(x, dtype=np.float32).reshape(-1) for x in df["observation.state"].tolist()], axis=0)
+    acts = np.stack([np.asarray(x, dtype=np.float32).reshape(-1) for x in df["action"].tolist()], axis=0)
+
+    if states.shape[1] < 14:
+        raise ValueError(f"observation.state dim < 14 in {parquet_path}: {states.shape}")
+    if acts.shape[1] < 14:
+        raise ValueError(f"action dim < 14 in {parquet_path}: {acts.shape}")
+
+    follow1_state = states[:, :7].tolist()
+    follow2_state = states[:, 7:14].tolist()
+    follow1_gt = acts[:, :7].tolist()
+    follow2_gt = acts[:, 7:14].tolist()
+
+    # Videos (if available)
+    front = left = right = np.zeros((0, 64, 64, 3), dtype=np.uint8)
+    if videos_root is not None:
+        front_p = videos_root / chunk_name / "observation.images.faceImg" / f"{episode_name}.mp4"
+        left_p = videos_root / chunk_name / "observation.images.leftImg" / f"{episode_name}.mp4"
+        right_p = videos_root / chunk_name / "observation.images.rightImg" / f"{episode_name}.mp4"
+        if front_p.exists():
+            front = _read_video_rgb(front_p)
+        if left_p.exists():
+            left = _read_video_rgb(left_p)
+        if right_p.exists():
+            right = _read_video_rgb(right_p)
+
+    return {
+        "follow1_state": follow1_state,
+        "follow2_state": follow2_state,
+        "follow1_gt": follow1_gt,
+        "follow2_gt": follow2_gt,
+        "camera_front": front,
+        "camera_left": left,
+        "camera_right": right,
+    }
 
 
 def _concat_lr(left: list[list[float]], right: list[list[float]]) -> np.ndarray:
@@ -233,10 +259,9 @@ async def run(args: argparse.Namespace) -> int:
         print(f"[INFO] metadata={metadata}")
 
         for sample in samples:
-            sample_dir = data_dir / sample
             print(f"\n[CASE] {sample}")
             try:
-                case = _load_case(sample_dir, sample)
+                case = _load_lerobot_case(data_dir, sample)
             except Exception as exc:  # noqa: BLE001
                 print(f"[SKIP] load case failed: {exc}")
                 continue
@@ -244,7 +269,10 @@ async def run(args: argparse.Namespace) -> int:
             front = case["camera_front"]
             left = case["camera_left"]
             right = case["camera_right"]
-            n_state = min(len(case["follow1_gt"]), len(case["follow2_gt"]))
+            follow1_state = case.get("follow1_state", case["follow1_gt"])
+            follow2_state = case.get("follow2_state", case["follow2_gt"])
+
+            n_state = min(len(follow1_state), len(follow2_state), len(case["follow1_gt"]), len(case["follow2_gt"]))
             n_cam = min(
                 [x.shape[0] for x in (front, left, right) if x.shape[0] > 0] or [n_state]
             )
@@ -260,8 +288,8 @@ async def run(args: argparse.Namespace) -> int:
             while idx < n_steps and sum(c.shape[0] for c in pred_chunks) < args.max_pred_steps:
                 payload = {
                     "state": {
-                        "follow1_pos": case["follow1_gt"][idx],
-                        "follow2_pos": case["follow2_gt"][idx],
+                        "follow1_pos": follow1_state[idx],
+                        "follow2_pos": follow2_state[idx],
                     },
                     "views": {
                         "camera_front": _encode_image(front[idx]) if front.shape[0] > idx else None,
@@ -304,6 +332,7 @@ async def run(args: argparse.Namespace) -> int:
             gt_all = gt_all[:n]
 
             out_stem = save_dir / sample
+            out_stem.parent.mkdir(parents=True, exist_ok=True)
             np.savez(
                 f"{out_stem}.npz",
                 pred=pred_all.astype(np.float32),
@@ -324,9 +353,17 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Run open-loop eval against ManipArena server.")
+    p = argparse.ArgumentParser(description="Run open-loop eval against ManipArena server (LeRobot-only).")
     p.add_argument("--uri", type=str, default="ws://127.0.0.1:8000", help="Server WebSocket URI.")
-    p.add_argument("--data-dir", type=str, required=True, help="Dataset root. Supports report.json+sample dirs.")
+    p.add_argument(
+        "--data-dir",
+        type=str,
+        required=True,
+        help=(
+            "LeRobot dataset root or its data dir. "
+            "Expected: <root>/data/chunk-*/episode_*.parquet (+ optional <root>/videos)."
+        ),
+    )
     p.add_argument("--save-dir", type=str, required=True, help="Output directory for npz/jpg.")
     p.add_argument("--instruction", type=str, default="self-check task", help="Instruction text sent to server.")
     p.add_argument("--sample-limit", type=int, default=1, help="How many samples to evaluate (<=0 means all).")
