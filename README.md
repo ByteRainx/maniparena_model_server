@@ -41,8 +41,10 @@ class MyPolicy(ModelPolicy):
         return convert_model_output_to_action(model_output, self.control_mode, self.action_horizon)
 ```
 
-See [`examples/my_policy.py`](examples/my_policy.py) for the full template and
-[`examples/pytorch_example.py`](examples/pytorch_example.py) for a PyTorch reference.
+See [`examples/my_policy.py`](examples/my_policy.py) for the full template,
+[`examples/pytorch_example.py`](examples/pytorch_example.py) for a PyTorch reference,
+and [`examples/openpi_example.py`](examples/openpi_example.py) for a ready-to-run
+[OpenPI](https://github.com/Physical-Intelligence/openpi) example.
 
 ## Self-Check Before Submission
 
@@ -69,19 +71,29 @@ lowercase keys, `List[List[float]]` trajectories, correct dimensions.
 
 ### Step 3 — Open-loop evaluation (optional)
 
+**Quick check** (no video needed, parquet only):
+
 ```bash
 python scripts/mock_openloop_eval.py \
     --uri ws://127.0.0.1:8000 \
     --data-dir /path/to/lerobot_dataset \
     --save-dir /path/to/output \
-    --sample-limit 3
+    --sample-limit 3 --enable-plots
 ```
 
-Replays LeRobot episodes through your server and saves `pred`/`gt` arrays to `.npz`.
-Add `--enable-plots` to generate comparison plots.
+**Full evaluation** (parquet + video, generates pred vs gt plots):
 
-> `--data-dir` expects LeRobot layout: `data/chunk-*/episode_*.parquet`
-> (+ optional `videos/` sibling directory).
+```bash
+python scripts/eval_openloop.py \
+    --server ws://127.0.0.1:8000 \
+    --dataset /path/to/lerobot_dataset \
+    --episode 0 \
+    --save-dir openloop_plots \
+    --action-chunk 32
+```
+
+> Both expect LeRobot layout: `data/chunk-*/episode_*.parquet`
+> (+ `videos/chunk-*/observation.images.*/episode_*.mp4` for full eval).
 
 ---
 
@@ -152,8 +164,10 @@ maniparena/                # core framework (do not modify)
 examples/                  # participant code
     my_policy.py           #   ← edit this file
     pytorch_example.py     #   PyTorch reference
-scripts/                   # self-check tools
+    openpi_example.py      #   OpenPI ready-to-run example
+scripts/                   # self-check & evaluation tools
     mock_ping.py           #   Step 1: handshake check
     mock_schema_check.py   #   Step 2: schema validation
-    mock_openloop_eval.py  #   Step 3: open-loop eval
+    mock_openloop_eval.py  #   Step 3: quick open-loop check
+    eval_openloop.py       #   Full open-loop eval with plots
 ```
