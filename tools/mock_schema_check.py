@@ -71,7 +71,7 @@ def _build_desktop_payload() -> dict[str, Any]:
             "camera_front": jpeg,
             "camera_right": jpeg,
         },
-        "instruction": np.array(["self-check desktop"], dtype=np.object_),
+        "instruction": "self-check desktop",
     }
 
 
@@ -89,7 +89,7 @@ def _build_cx001_payload() -> dict[str, Any]:
         "CAR_POSE": np.zeros((3,), dtype=np.float32),
         "LIFT": np.zeros((1,), dtype=np.float32),
         "HEAD_POS": np.zeros((2,), dtype=np.float32),
-        "INSTRUCTION": np.array(["self-check cx001"], dtype=np.object_),
+        "INSTRUCTION": "self-check cx001",
     }
 
 

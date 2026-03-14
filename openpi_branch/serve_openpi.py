@@ -445,18 +445,42 @@ class OpenPIServingPolicy:
 
         return images
 
-    def _extract_prompt(self, obs: dict) -> str:
-        instruction = obs.get("instruction")
-        if instruction is not None:
-            if isinstance(instruction, np.ndarray):
-                return str(instruction.flat[0]) if instruction.size > 0 else ""
-            if isinstance(instruction, (list, tuple)):
-                return str(instruction[0]) if instruction else ""
-            return str(instruction)
+    @staticmethod
+    def _recover_instruction_value(raw: Any) -> str:
+        """Recover instruction string from various wire formats.
 
-        prompt = obs.get("prompt")
-        if prompt is not None:
-            return str(prompt)
+        Handles: np.ndarray, list/tuple, msgpack_numpy dict (pickled
+        np.object_ array), bytes, and plain str.
+        """
+        if raw is None:
+            return ""
+        if isinstance(raw, np.ndarray):
+            return str(raw.flat[0]) if raw.size > 0 else ""
+        if isinstance(raw, dict):
+            import pickle
+            data = raw.get("data", raw.get(b"data"))
+            if data is not None:
+                try:
+                    arr = pickle.loads(data)
+                    if isinstance(arr, np.ndarray) and arr.size > 0:
+                        return str(arr.flat[0])
+                    return str(arr)
+                except Exception:
+                    pass
+            return ""
+        if isinstance(raw, (bytes, bytearray)):
+            return raw.decode("utf-8", errors="replace")
+        if isinstance(raw, (list, tuple)):
+            return str(raw[0]) if raw else ""
+        return str(raw) if raw else ""
+
+    def _extract_prompt(self, obs: dict) -> str:
+        for key in ("instruction", "INSTRUCTION", "prompt", "PROMPT"):
+            raw = obs.get(key)
+            if raw is not None:
+                result = self._recover_instruction_value(raw)
+                if result:
+                    return result
 
         return self.default_prompt or ""
 

@@ -296,7 +296,7 @@ async def run(args: argparse.Namespace) -> int:
                         "camera_left": _encode_image(left[idx]) if left.shape[0] > idx else None,
                         "camera_right": _encode_image(right[idx]) if right.shape[0] > idx else None,
                     },
-                    "instruction": np.array([args.instruction], dtype=np.object_),
+                    "instruction": args.instruction,
                 }
 
                 await ws.send(msgpack.packb(payload, use_bin_type=True))

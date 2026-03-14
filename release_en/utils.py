@@ -84,10 +84,53 @@ def _is_nested(obs: Dict[str, Any]) -> bool:
     return "state" in obs and isinstance(obs["state"], dict)
 
 
+def _decode_msgpack_numpy_object(d: dict) -> Any:
+    """Reconstruct a numpy object array serialized by msgpack_numpy.
+
+    When msgpack_numpy serializes an ``np.object_`` array the result is a dict
+    with keys like ``nd``, ``type``, ``kind``, ``shape``, ``data``.  The
+    ``data`` value is a pickle blob.  If the server-side ``unpackb`` does not
+    fully reconstruct the array (e.g. ``raw=False`` interferes with the hook),
+    the dict arrives as-is.  This helper recovers the original array.
+    """
+    import pickle
+
+    def _get(key: str) -> Any:
+        return d.get(key, d.get(key.encode(), None))
+
+    data = _get("data")
+    if data is None:
+        return None
+    try:
+        return pickle.loads(data)
+    except Exception:
+        return None
+
+
 def _extract_instruction(obs: Dict[str, Any]) -> str:
-    raw = obs.get("instruction") or obs.get("prompt", "")
+    """Extract text instruction, compatible with Desktop / CX001 / msgpack_numpy dict."""
+    raw = None
+    for key in ("instruction", "INSTRUCTION", "prompt", "PROMPT"):
+        raw = obs.get(key, None)
+        if raw is not None:
+            break
+    if raw is None:
+        return ""
+
     if isinstance(raw, np.ndarray):
         return str(raw.flat[0]) if raw.size > 0 else ""
+
+    if isinstance(raw, dict):
+        recovered = _decode_msgpack_numpy_object(raw)
+        if recovered is not None:
+            if isinstance(recovered, np.ndarray) and recovered.size > 0:
+                return str(recovered.flat[0])
+            return str(recovered)
+        return ""
+
+    if isinstance(raw, (bytes, bytearray)):
+        return raw.decode("utf-8", errors="replace")
+
     return str(raw) if raw else ""
 
 

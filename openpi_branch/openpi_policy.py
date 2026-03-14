@@ -118,11 +118,34 @@ class OpenPIX2RobotPolicy:
 
     @staticmethod
     def _extract_instruction(obs: Dict[str, Any]) -> Optional[str]:
-        raw = obs.get("instruction", None)
+        raw = None
+        for key in ("instruction", "INSTRUCTION", "prompt", "PROMPT"):
+            raw = obs.get(key, None)
+            if raw is not None:
+                break
         if raw is None:
-            raw = obs.get("prompt", None)
+            return None
+
         if isinstance(raw, np.ndarray):
             return str(raw.flat[0]) if raw.size > 0 else None
+
+        # msgpack_numpy serialized dict (np.object_ array not deserialized)
+        if isinstance(raw, dict):
+            import pickle
+            data = raw.get("data", raw.get(b"data"))
+            if data is not None:
+                try:
+                    arr = pickle.loads(data)
+                    if isinstance(arr, np.ndarray) and arr.size > 0:
+                        return str(arr.flat[0])
+                    return str(arr)
+                except Exception:
+                    pass
+            return None
+
+        if isinstance(raw, (bytes, bytearray)):
+            return raw.decode("utf-8", errors="replace")
+
         return str(raw) if raw else None
 
     def infer(self, obs: Dict[str, Any]) -> Dict[str, Any]:
