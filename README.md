@@ -19,10 +19,7 @@ pip install -r requirements.txt
 # 2. Edit examples/my_policy.py (implement load_model / run_inference / convert_output)
 
 # 3. Launch
-PYTHONPATH=examples python -m maniparena.launch \
-    --checkpoint /path/to/ckpt \
-    --control-mode end_pose \
-    --port 8000
+python serve.py --checkpoint /path/to/ckpt --control-mode end_pose --port 8000
 ```
 
 ## Implement Your Policy
@@ -132,6 +129,7 @@ Metadata example: `{"control_mode": "end_pose", "action_horizon": 50, "state_dim
 ## Project Structure
 
 ```
+serve.py                   # ← start here: python serve.py --checkpoint ...
 maniparena/                # core framework (do not modify)
     policy.py              #   ModelPolicy base class
     server.py              #   WebSocket server
