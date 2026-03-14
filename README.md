@@ -2,11 +2,9 @@
 
 <!-- TODO: ![ManipArena](docs/teaser.jpg) -->
 
-Model server template for the [ManipArena](https://maniparena.github.io/) benchmark (CVPR 2025).
+[ManipArena](https://maniparena.github.io/) is a real-robot benchmark for bimanual manipulation, featuring 20 tasks across execution reasoning, semantic reasoning, and mobile manipulation. Participants serve their model remotely — no robot hardware needed.
 
-Participants implement a policy in [`examples/my_policy.py`](examples/my_policy.py).
-The framework handles WebSocket transport, observation parsing, and action serialization —
-you only write model-specific code.
+This repo is the **model server template**. Implement your policy in [`examples/my_policy.py`](examples/my_policy.py), and the framework handles WebSocket transport, observation parsing, and action serialization.
 
 ---
 
