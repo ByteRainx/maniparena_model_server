@@ -69,7 +69,9 @@ python scripts/mock_schema_check.py --uri ws://127.0.0.1:8000
 Sends a dummy Desktop observation and validates the response:
 lowercase keys, `List[List[float]]` trajectories, correct dimensions.
 
-### Step 3 — Open-loop evaluation (optional)
+### Step 3 — Open-loop evaluation (recommended)
+
+We recommend running open-loop evaluation before submission to visually check whether your model's predictions align with the ground truth trajectories.
 
 **Quick check** (no video needed, parquet only):
 
