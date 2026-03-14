@@ -1,7 +1,7 @@
 """
 Core WebSocket server implementation.
 
-Protocol with x2robot_client:
+Protocol with robot client:
 1. Send metadata immediately after connection (msgpack).
 2. Receive observation messages from client (msgpack).
 3. Run policy.infer(obs) and return result (msgpack).
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketModelServer:
-    """WebSocket server that handles x2robot_client connections."""
+    """WebSocket server that handles robot client connections."""
     
     def __init__(
         self,
@@ -82,7 +82,7 @@ class WebSocketModelServer:
                         continue
                     
                     # Decode observation
-                    # raw=False ensures str keys (compatible with x2robot_client's dict access patterns).
+                    # raw=False ensures str keys (compatible with robot client's dict access patterns).
                     obs = msgpack.unpackb(message, raw=False)
                     logger.debug(f"Received observation from {client_addr}, keys: {list(obs.keys())}")
                     

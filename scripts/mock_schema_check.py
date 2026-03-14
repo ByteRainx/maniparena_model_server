@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Protocol/schema validator for ManipArena model server.
 
-This script sends minimal valid requests and validates response schema:
-- Desktop mode: lowercase keys (`follow1_pos`, `follow2_pos`)
-- CX001 mode: uppercase keys (`FOLLOW1_POS`, `FOLLOW2_POS`, and optional MM extras)
+Sends a dummy Desktop observation and validates the response:
+lowercase keys (`follow1_pos`, `follow2_pos`), List[List[float]] trajectories.
 """
 
 from __future__ import annotations
@@ -34,11 +33,7 @@ def _is_number(x: Any) -> bool:
     return isinstance(x, (int, float, np.floating, np.integer))
 
 
-def _validate_trajectory(
-    obj: Any,
-    key: str,
-    dim: int,
-) -> list[str]:
+def _validate_trajectory(obj: Any, key: str, dim: int) -> list[str]:
     errors: list[str] = []
     if not isinstance(obj, list):
         return [f"{key} must be List[List[float]], got {type(obj).__name__}"]
@@ -57,7 +52,7 @@ def _validate_trajectory(
     return errors
 
 
-def _build_desktop_payload() -> dict[str, Any]:
+def _build_payload() -> dict[str, Any]:
     img = np.zeros((64, 64, 3), dtype=np.uint8)
     img[:, :, 1] = 180
     jpeg = _encode_jpeg_base64(img)
@@ -71,83 +66,23 @@ def _build_desktop_payload() -> dict[str, Any]:
             "camera_front": jpeg,
             "camera_right": jpeg,
         },
-        "instruction": "self-check desktop",
+        "instruction": "self-check",
     }
 
 
-def _build_cx001_payload() -> dict[str, Any]:
-    img = np.zeros((64, 64, 3), dtype=np.uint8)
-    img[:, :, 2] = 200
-    return {
-        "CAMERA_LEFT": img,
-        "CAMERA_FRONT": img,
-        "CAMERA_RIGHT": img,
-        "ACTION_FOLLOW1_POS": np.array([0.1, 0.2, 0.3, 0.0, 0.1, 0.2, 0.6], dtype=np.float32),
-        "ACTION_FOLLOW2_POS": np.array([0.1, -0.2, 0.3, 0.0, -0.1, 0.2, 0.6], dtype=np.float32),
-        "ACTION_FOLLOW1_JOINTS_CUR": np.zeros((7,), dtype=np.float32),
-        "ACTION_FOLLOW2_JOINTS_CUR": np.zeros((7,), dtype=np.float32),
-        "CAR_POSE": np.zeros((3,), dtype=np.float32),
-        "LIFT": np.zeros((1,), dtype=np.float32),
-        "HEAD_POS": np.zeros((2,), dtype=np.float32),
-        "INSTRUCTION": "self-check cx001",
-    }
-
-
-def _validate_desktop_response(resp: dict[str, Any]) -> list[str]:
+def _validate_response(resp: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     for key in ("follow1_pos", "follow2_pos"):
         if key not in resp:
             errors.append(f"missing key: {key}")
         else:
             errors.extend(_validate_trajectory(resp[key], key, dim=7))
-
-    for wrong in ("FOLLOW1_POS", "FOLLOW2_POS"):
-        if wrong in resp:
-            errors.append(f"wrong key casing for Desktop: found {wrong}")
     return errors
 
 
-def _validate_cx001_response(resp: dict[str, Any], require_mm_extras: bool) -> list[str]:
-    errors: list[str] = []
-    for key in ("FOLLOW1_POS", "FOLLOW2_POS"):
-        if key not in resp:
-            errors.append(f"missing key: {key}")
-        else:
-            errors.extend(_validate_trajectory(resp[key], key, dim=7))
-
-    for wrong in ("follow1_pos", "follow2_pos"):
-        if wrong in resp:
-            errors.append(f"wrong key casing for CX001: found {wrong}")
-
-    if require_mm_extras:
-        extra_dims = {
-            "HEAD_POS": 2,
-            "LIFT_OUT": 1,
-            "CAR_POSE_OUT": 3,
-        }
-        for key, dim in extra_dims.items():
-            if key not in resp:
-                errors.append(f"missing MM extra key: {key}")
-            else:
-                errors.extend(_validate_trajectory(resp[key], key, dim=dim))
-    return errors
-
-
-async def _send_and_recv(ws, payload: dict[str, Any], timeout_sec: float) -> dict[str, Any]:
-    await ws.send(msgpack.packb(payload, use_bin_type=True))
-    msg = await asyncio.wait_for(ws.recv(), timeout=timeout_sec)
-    if isinstance(msg, str):
-        raise RuntimeError(f"server returned text error: {msg}")
-    resp = msgpack.unpackb(msg, raw=False)
-    if not isinstance(resp, dict):
-        raise RuntimeError(f"response is not dict: {type(resp).__name__}")
-    return resp
-
-
-async def run(uri: str, mode: str, timeout_sec: float, require_mm_extras: bool) -> int:
-    print(f"[SCHEMA] Connecting to {uri} mode={mode}")
+async def run(uri: str, timeout_sec: float) -> int:
+    print(f"[SCHEMA] Connecting to {uri}")
     async with websockets.connect(uri, open_timeout=timeout_sec) as ws:
-        # First frame must be metadata
         first = await asyncio.wait_for(ws.recv(), timeout=timeout_sec)
         if isinstance(first, str):
             print(f"[FAIL] expected metadata msgpack, got text: {first}")
@@ -155,75 +90,43 @@ async def run(uri: str, mode: str, timeout_sec: float, require_mm_extras: bool) 
         metadata = msgpack.unpackb(first, raw=False)
         print("[INFO] metadata:", json.dumps(metadata, ensure_ascii=False, default=str))
 
-        checks: list[tuple[str, dict[str, Any], Any]] = []
-        if mode in {"desktop", "both"}:
-            checks.append(("desktop", _build_desktop_payload(), _validate_desktop_response))
-        if mode in {"cx001", "both"}:
-            checks.append(
-                (
-                    "cx001",
-                    _build_cx001_payload(),
-                    lambda r: _validate_cx001_response(r, require_mm_extras=require_mm_extras),
-                )
-            )
+        print("[CHECK] desktop schema")
+        try:
+            payload = _build_payload()
+            await ws.send(msgpack.packb(payload, use_bin_type=True))
+            msg = await asyncio.wait_for(ws.recv(), timeout=timeout_sec)
+            if isinstance(msg, str):
+                raise RuntimeError(f"server returned text error: {msg}")
+            resp = msgpack.unpackb(msg, raw=False)
+            if not isinstance(resp, dict):
+                raise RuntimeError(f"response is not dict: {type(resp).__name__}")
+            errors = _validate_response(resp)
+        except Exception as exc:
+            print(f"[FAIL] {exc}")
+            return 1
 
-        failed = 0
-        for name, payload, validator in checks:
-            print(f"[CHECK] {name}")
-            try:
-                resp = await _send_and_recv(ws, payload, timeout_sec=timeout_sec)
-                errors = validator(resp)
-            except Exception as exc:  # noqa: BLE001
-                print(f"[FAIL] {name}: {exc}")
-                failed += 1
-                continue
+        if errors:
+            print("[FAIL] Schema errors:")
+            for e in errors:
+                print(f"  - {e}")
+            return 1
 
-            if errors:
-                failed += 1
-                print(f"[FAIL] {name}:")
-                for e in errors:
-                    print(f"  - {e}")
-            else:
-                print(f"[PASS] {name}")
-
-        if failed == 0:
-            print("[PASS] All schema checks passed.")
-            return 0
-        print(f"[FAIL] {failed} check(s) failed.")
-        return 1
+        print("[PASS] All schema checks passed.")
+        return 0
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Validate request/response schema against server.")
     p.add_argument("--uri", type=str, default="ws://127.0.0.1:8000", help="Server WebSocket URI.")
-    p.add_argument(
-        "--mode",
-        choices=["desktop", "cx001", "both"],
-        default="desktop",
-        help="Which schema set to validate.",
-    )
     p.add_argument("--timeout-sec", type=float, default=8.0, help="Connect/recv timeout in seconds.")
-    p.add_argument(
-        "--require-mm-extras",
-        action="store_true",
-        help="For CX001 check, require HEAD_POS/LIFT_OUT/CAR_POSE_OUT.",
-    )
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    code = asyncio.run(
-        run(
-            uri=args.uri,
-            mode=args.mode,
-            timeout_sec=args.timeout_sec,
-            require_mm_extras=args.require_mm_extras,
-        )
-    )
+    code = asyncio.run(run(uri=args.uri, timeout_sec=args.timeout_sec))
     raise SystemExit(code)
 
 
 if __name__ == "__main__":
     main()
-

@@ -12,11 +12,7 @@ Usage:
 
     Replace `MyPolicy` import in serve.py or copy this file to examples/my_policy.py.
 
-Available config names (EE mode):
-    pi0_x2robot_pick_banana_ee
-    pi05_x2robot_pick_banana_ee
-    pi0_x2robot_pick_banana_merged_ee
-    pi05_x2robot_pick_banana_merged_ee
+Set OPENPI_CONFIG_NAME below to match your trained OpenPI config.
 """
 
 from __future__ import annotations
@@ -34,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────
 
-OPENPI_CONFIG_NAME = "pi0_x2robot_pick_banana_merged_ee"
+OPENPI_CONFIG_NAME = "your_openpi_config_name"  # e.g. "pi0_your_task_ee"
 DEFAULT_PROMPT = "pick up the banana"
 ACTION_END_RATIO = 0.8  # keep first 80% of predicted actions
 
