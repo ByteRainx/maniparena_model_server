@@ -26,9 +26,5 @@ class MyPolicy(ModelPolicy):
         return convert_observation_to_model_input(obs, self.control_mode, decode_images=False)
 
     def convert_output(self, model_output: Any) -> Dict[str, Any]:
-        # WARNING: output values MUST be Python lists, NOT numpy arrays!
-        # The robot client does `[current_pos] + actions` which silently
-        # broadcasts if actions is numpy, corrupting the trajectory.
-        # convert_model_output_to_action() handles .tolist() internally.
-        # If you write custom logic, always call .tolist() on every value.
+        # NOTE: output values must be Python lists (.tolist()), not numpy arrays.
         return convert_model_output_to_action(model_output, self.control_mode, self.action_horizon)
