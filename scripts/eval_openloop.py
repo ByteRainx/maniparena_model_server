@@ -199,8 +199,8 @@ def main():
     p.add_argument("--instruction", default="", help="Override task instruction")
     p.add_argument("--max-steps", type=int, default=0, help="0 = all frames")
     p.add_argument("--action-chunk", type=int, default=32, help="Steps per inference")
-    main.args = p.parse_args()
-    run(main.args)
+    args = p.parse_args()
+    run(args)
 
 
 if __name__ == "__main__":

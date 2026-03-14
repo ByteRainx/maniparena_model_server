@@ -33,9 +33,9 @@ def _to_1d_list(x: Any) -> list[float]:
 def _extract_arm_7d(step: dict[str, Any], arm: str) -> list[float] | None:
     # Direct 7D keys
     if arm == "left":
-        direct = ["follow1_pos", "ACTION_FOLLOW1_POS"]
+        direct = ["follow1_pos"]
     else:
-        direct = ["follow2_pos", "ACTION_FOLLOW2_POS"]
+        direct = ["follow2_pos"]
     for k in direct:
         if k in step:
             v = _to_1d_list(step[k])
@@ -195,12 +195,8 @@ def _concat_lr(left: list[list[float]], right: list[list[float]]) -> np.ndarray:
 def _extract_resp_lr(resp: dict[str, Any]) -> tuple[list[list[float]], list[list[float]]]:
     if "follow1_pos" in resp and "follow2_pos" in resp:
         return resp["follow1_pos"], resp["follow2_pos"]
-    if "FOLLOW1_POS" in resp and "FOLLOW2_POS" in resp:
-        return resp["FOLLOW1_POS"], resp["FOLLOW2_POS"]
     if "follow1_joints" in resp and "follow2_joints" in resp:
         return resp["follow1_joints"], resp["follow2_joints"]
-    if "FOLLOW1_JOINTS" in resp and "FOLLOW2_JOINTS" in resp:
-        return resp["FOLLOW1_JOINTS"], resp["FOLLOW2_JOINTS"]
     raise KeyError("response missing follow1/follow2 trajectory keys")
 
 

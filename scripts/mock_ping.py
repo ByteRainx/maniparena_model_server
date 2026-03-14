@@ -39,16 +39,16 @@ def _validate_metadata(meta: dict[str, Any]) -> list[str]:
             )
 
     if "control_mode" in meta and isinstance(meta["control_mode"], str):
-        if meta["control_mode"] not in {"joints", "end_pose", "mobile_manipulation"}:
+        if meta["control_mode"] not in {"joints", "end_pose"}:
             errors.append(
-                "control_mode should be one of joints/end_pose/mobile_manipulation"
+                "control_mode should be one of joints/end_pose"
             )
     if "action_horizon" in meta and isinstance(meta["action_horizon"], int):
         if meta["action_horizon"] <= 0:
             errors.append("action_horizon must be > 0")
     if "state_dim" in meta and isinstance(meta["state_dim"], int):
-        if meta["state_dim"] not in {14, 20}:
-            errors.append("state_dim should usually be 14 or 20")
+        if meta["state_dim"] != 14:
+            errors.append("state_dim should be 14")
     return errors
 
 
