@@ -1,15 +1,17 @@
+"""Example: serving a PyTorch model."""
+
 from __future__ import annotations
 
 from typing import Any, Dict
 
 import numpy as np
 
-from policy_base import ModelPolicy
-from utils import convert_model_output_to_x2robot_format, convert_observation_to_model_input
+from maniparena.policy import ModelPolicy
+from maniparena.utils import convert_model_output_to_action, convert_observation_to_model_input
 
 
 def build_model() -> Any:
-    raise NotImplementedError
+    raise NotImplementedError("Replace with your model constructor")
 
 
 class TorchPolicy(ModelPolicy):
@@ -33,5 +35,8 @@ class TorchPolicy(ModelPolicy):
         return out.detach().cpu().numpy()
 
     def convert_output(self, model_output: Any) -> Dict[str, Any]:
-        actions = np.asarray(model_output, dtype=np.float32)
-        return convert_model_output_to_x2robot_format(actions, self.control_mode, self.action_horizon)
+        return convert_model_output_to_action(
+            np.asarray(model_output, dtype=np.float32),
+            self.control_mode,
+            self.action_horizon,
+        )
