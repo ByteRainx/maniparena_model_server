@@ -125,6 +125,21 @@ Loop:  Client sends observation (msgpack) → Server returns actions (msgpack)
 
 Metadata example: `{"control_mode": "end_pose", "action_horizon": 50, "state_dim": 14}`
 
+## CLI Arguments
+
+```bash
+python serve.py --help
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `--checkpoint` | (required) | Model checkpoint path |
+| `--control-mode` | `end_pose` | `end_pose` or `joints` |
+| `--action-horizon` | `50` | Action sequence length (T) |
+| `--device` | `cuda:0` | `cuda:0`, `cpu`, etc. |
+| `--port` | `8000` | Server port |
+| `--host` | `0.0.0.0` | Server host |
+
 ## Project Structure
 
 ```
