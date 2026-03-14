@@ -35,6 +35,8 @@ class TorchPolicy(ModelPolicy):
         return out.detach().cpu().numpy()
 
     def convert_output(self, model_output: Any) -> Dict[str, Any]:
+        # convert_model_output_to_action calls .tolist() internally.
+        # NEVER return numpy arrays — the client's list concatenation will silently break.
         return convert_model_output_to_action(
             np.asarray(model_output, dtype=np.float32),
             self.control_mode,

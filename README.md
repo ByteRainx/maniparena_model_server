@@ -113,9 +113,29 @@ Add `--enable-plots` to generate comparison plots.
 }
 ```
 
-> **Important:** Values **must** be Python lists (`.tolist()`), not numpy arrays.
-> The client does `[current_pos] + actions` — numpy `+` silently broadcasts instead
-> of concatenating, which corrupts the trajectory.
+> [!CAUTION]
+> **Action values MUST be Python lists (`.tolist()`), NOT numpy arrays.**
+>
+> The robot client prepends the current position before executing:
+> ```python
+> arm1_actions = [self.last_arm_l_pos] + arm1_actions   # expects list + list
+> ```
+> If your server returns a **numpy array**, Python `+` triggers **element-wise broadcasting**
+> instead of list concatenation — the trajectory is **silently corrupted** with no error.
+> The robot will move to wrong positions and you will have no indication why.
+>
+> Always use `.tolist()`:
+> ```python
+> def convert_output(self, model_output):
+>     actions = np.array(model_output)              # (T, 14)
+>     return {
+>         "follow1_pos": actions[:, :7].tolist(),    # Python list, NOT numpy
+>         "follow2_pos": actions[:, 7:14].tolist(),
+>     }
+> ```
+>
+> The built-in helper `convert_model_output_to_action()` handles this correctly.
+> If you write custom output conversion, always verify with `mock_schema_check.py`.
 
 ## Protocol
 
