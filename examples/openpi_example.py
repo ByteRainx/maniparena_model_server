@@ -63,10 +63,14 @@ class MyPolicy(ModelPolicy):
 
     def load_model(self, checkpoint_path: str, device: str) -> Any:
         from openpi.policies import policy_config as pc
-        from openpi.training import checkpoints as ckpt
+        from openpi.training import config as train_config
 
-        config = pc.get_policy_config(OPENPI_CONFIG_NAME)
-        policy = ckpt.load_policy(config, checkpoint_path)
+        cfg = train_config.get_config(OPENPI_CONFIG_NAME)
+        policy = pc.create_trained_policy(
+            cfg, checkpoint_path,
+            default_prompt=DEFAULT_PROMPT,
+            pytorch_device=device,
+        )
         logger.info(f"OpenPI model loaded: config={OPENPI_CONFIG_NAME}")
         return policy
 
