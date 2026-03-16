@@ -1,4 +1,4 @@
-# ManipArena-Server
+# ManipArena Model Server
 
 <!-- TODO: ![ManipArena](docs/teaser.jpg) -->
 
