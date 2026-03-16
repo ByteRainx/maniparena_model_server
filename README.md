@@ -6,7 +6,7 @@
 
 This repo is the **model server template**. Implement your policy in [`examples/my_policy.py`](examples/my_policy.py), and the framework handles WebSocket transport, observation parsing, and action serialization.
 
-> **Related repo:** [ManipArena-Sim](https://github.com/maniparena/ManipArena-Sim) — simulation environment for local testing and data collection.
+> **Related repo:** [ManipArena-Sim](https://github.com/maniparena/maniparena-sim) — simulation environment for local testing and data collection.
 
 ---
 
