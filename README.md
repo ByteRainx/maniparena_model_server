@@ -1,10 +1,12 @@
-# ManipArena Model Server
+# ManipArena-Server
 
 <!-- TODO: ![ManipArena](docs/teaser.jpg) -->
 
 [ManipArena](https://maniparena.github.io/) is a real-robot benchmark for bimanual manipulation, featuring 20 tasks across execution reasoning, semantic reasoning, and mobile manipulation. Participants serve their model remotely — no robot hardware needed.
 
 This repo is the **model server template**. Implement your policy in [`examples/my_policy.py`](examples/my_policy.py), and the framework handles WebSocket transport, observation parsing, and action serialization.
+
+> **Related repo:** [ManipArena-Sim](https://github.com/maniparena/ManipArena-Sim) — simulation environment for local testing and data collection.
 
 ---
 
