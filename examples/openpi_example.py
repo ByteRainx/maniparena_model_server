@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OpenPI policy example — Desktop 14D (end-effector).
+"""OpenPI policy example — Bimanual 14D (end-effector).
 
 Prerequisites:
     pip install openpi    # or install from the openpi repo
@@ -59,7 +59,7 @@ def _decode_image(v: Any) -> np.ndarray:
 
 
 class MyPolicy(ModelPolicy):
-    """OpenPI policy adapter for ManipArena Desktop (14D EE)."""
+    """OpenPI policy adapter for ManipArena bimanual (14D EE)."""
 
     def load_model(self, checkpoint_path: str, device: str) -> Any:
         from openpi.policies import policy_config as pc

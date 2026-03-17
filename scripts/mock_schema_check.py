@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Protocol/schema validator for ManipArena model server.
 
-Sends a dummy Desktop observation and validates the response:
+Sends a dummy observation and validates the response:
 lowercase keys (`follow1_pos`, `follow2_pos`), List[List[float]] trajectories.
 """
 
@@ -90,7 +90,7 @@ async def run(uri: str, timeout_sec: float) -> int:
         metadata = msgpack.unpackb(first, raw=False)
         print("[INFO] metadata:", json.dumps(metadata, ensure_ascii=False, default=str))
 
-        print("[CHECK] desktop schema")
+        print("[CHECK] bimanual schema")
         try:
             payload = _build_payload()
             await ws.send(msgpack.packb(payload, use_bin_type=True))

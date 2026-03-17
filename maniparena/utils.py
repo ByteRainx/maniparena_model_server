@@ -1,4 +1,4 @@
-"""Observation / action conversion helpers for Desktop (14D) task."""
+"""Observation / action conversion helpers for Bimanual (14D) task."""
 
 import base64
 import logging
@@ -106,7 +106,7 @@ def convert_observation_to_model_input(
     control_mode: str,
     decode_images: bool = True,
 ) -> Dict[str, Any]:
-    """Parse Desktop observation into a model-friendly dict.
+    """Parse Bimanual observation into a model-friendly dict.
 
     Returns::
 
@@ -150,7 +150,7 @@ def convert_model_output_to_action(
     control_mode: str,
     action_horizon: int,
 ) -> Dict[str, Any]:
-    """Convert (T, 14) action array → Desktop response dict (lowercase keys).
+    """Convert (T, 14) action array → Bimanual response dict (lowercase keys).
 
     IMPORTANT: all values are Python lists (``.tolist()``), NOT numpy arrays.
     The client does ``[current_pos] + actions``; if ``actions`` is numpy,

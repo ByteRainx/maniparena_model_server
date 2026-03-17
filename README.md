@@ -66,7 +66,7 @@ Checks: WebSocket reachable, first frame is valid msgpack metadata, required fie
 python scripts/mock_schema_check.py --uri ws://127.0.0.1:8000
 ```
 
-Sends a dummy Desktop observation and validates the response:
+Sends a dummy observation and validates the response:
 lowercase keys, `List[List[float]]` trajectories, correct dimensions.
 
 ### Step 3 — Open-loop evaluation (recommended)
